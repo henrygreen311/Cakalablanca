@@ -7,30 +7,39 @@ if (!$accounts) {
 foreach ($accounts as $account) {
     $email = $account['email'];
     $password = $account['app_password'];
-    echo " Deleting all sent emails for: $email\n";
+    echo "Processing account: $email\n";
 
-    // IMAP path to Gmail's Sent folder
-    $imapPath = '{imap.gmail.com:993/imap/ssl}[Gmail]/Sent Mail';
+    // Define the folders to clean
+    $folders = [
+        'INBOX' => 'Inbox',
+        '[Gmail]/Sent Mail' => 'Sent Mail'
+    ];
 
-    $inbox = @imap_open($imapPath, $email, $password);
-    if (!$inbox) {
-        echo " Failed to connect to $email: " . imap_last_error() . "\n";
-        continue;
-    }
+    foreach ($folders as $folder => $label) {
+        echo " Deleting all emails in $label...\n";
+        $imapPath = "{imap.gmail.com:993/imap/ssl}$folder";
 
-    // Search for all messages in Sent Mail
-    $all = imap_search($inbox, 'ALL');
-
-    if ($all) {
-        foreach ($all as $msgNum) {
-            imap_delete($inbox, $msgNum);
+        $mailbox = @imap_open($imapPath, $email, $password);
+        if (!$mailbox) {
+            echo "  Failed to connect to $label for $email: " . imap_last_error() . "\n";
+            continue;
         }
-        imap_expunge($inbox);
-        echo " Deleted " . count($all) . " sent messages for $email.\n";
-    } else {
-        echo " No messages found in Sent Mail for $email.\n";
+
+        $emails = imap_search($mailbox, 'ALL');
+
+        if ($emails) {
+            foreach ($emails as $msgNum) {
+                imap_delete($mailbox, $msgNum);
+            }
+            imap_expunge($mailbox);
+            echo "  Deleted " . count($emails) . " messages in $label.\n";
+        } else {
+            echo "  No messages found in $label.\n";
+        }
+
+        imap_close($mailbox);
     }
 
-    imap_close($inbox);
+    echo "Completed cleanup for: $email\n\n";
 }
 ?>
