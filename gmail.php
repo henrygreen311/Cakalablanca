@@ -12,30 +12,51 @@ if (!$accounts) {
     die("Failed to load config.json or invalid format.\n");
 }
 
+// Load target emails
 $emailFile = 'emails.txt';
-
-// Read email list
 $targets = file($emailFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-if (!$targets) {
+if (!$targets || count($targets) === 0) {
     die("emails.txt is missing or empty.\n");
 }
 
 $maxPerAccount = 105;
 $totalSent = 0;
-$totalToSend = count($targets);
-$targetIndex = 0;
+$maxQuotaFailures = 3;
 
-foreach ($accounts as $account) {
+foreach ($accounts as $accountIndex => $account) {
     $email = $account['email'];
     $password = $account['app_password'];
     $sentCount = 0;
+    $quotaFailures = 0;
 
-    echo "\nSending from: $email\n";
+    echo "\nUsing account [$accountIndex]: $email\n";
 
-    while ($sentCount < $maxPerAccount && isset($targets[$targetIndex])) {
+    // Test SMTP credentials
+    $authTest = new PHPMailer(true);
+    try {
+        $authTest->isSMTP();
+        $authTest->Host = 'smtp.gmail.com';
+        $authTest->SMTPAuth = true;
+        $authTest->Username = $email;
+        $authTest->Password = $password;
+        $authTest->SMTPSecure = 'tls';
+        $authTest->Port = 587;
+        $authTest->smtpConnect();
+        $authTest->smtpClose();
+    } catch (Exception $e) {
+        echo "Authentication failed for $email. Skipping this account.\n";
+        continue;
+    }
+
+    $targetIndex = 0;
+
+    while (
+        $sentCount < $maxPerAccount &&
+        isset($targets[$targetIndex]) &&
+        $quotaFailures < $maxQuotaFailures
+    ) {
         $recipient = trim($targets[$targetIndex]);
 
-        // Skip invalid email
         if (!filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
             echo "Skipped invalid email: '$recipient'\n";
             $targetIndex++;
@@ -43,8 +64,6 @@ foreach ($accounts as $account) {
         }
 
         $mail = new PHPMailer(true);
-        $sendSuccess = false;
-
         try {
             $mail->isSMTP();
             $mail->Host = 'smtp.gmail.com';
@@ -62,30 +81,47 @@ foreach ($accounts as $account) {
             $mail->Body = 'This is a test email used to validate delivery to your address.';
 
             $mail->send();
-            echo "Sent to: $recipient\n";
 
+            echo "Sent to: $recipient\n";
             $sentCount++;
             $totalSent++;
-            $sendSuccess = true;
+
+            // Remove sent email from list and save file
+            unset($targets[$targetIndex]);
+            $targets = array_values($targets);
+            file_put_contents($emailFile, implode("\n", $targets));
+            $targetIndex = 0;
 
         } catch (Exception $e) {
-            echo "Failed to send to $recipient: {$mail->ErrorInfo}\n";
+            $error = $mail->ErrorInfo;
+            echo "Failed to send to $recipient: $error\n";
+
+            if (
+                stripos($error, 'Daily user sending quota exceeded') !== false ||
+                stripos($error, 'Quota exceeded') !== false ||
+                stripos($error, 'Rate limit') !== false
+            ) {
+                $quotaFailures++;
+                echo "Daily limit error detected ($quotaFailures of $maxQuotaFailures)\n";
+
+                if ($quotaFailures >= $maxQuotaFailures) {
+                    echo "Account $email exceeded quota error threshold. Skipping.\n";
+                    break;
+                }
+            }
+
+            $targetIndex++;
         }
 
-        if ($sendSuccess) {
-    unset($targets[$targetIndex]);
-    $targets = array_values($targets); // reindex numerically
-    file_put_contents($emailFile, implode("\n", $targets));
-    $targetIndex = 0; // restart from the top
-} else {
-    $targetIndex++;
-}
-
-        sleep(1); // throttle
+        sleep(1);
     }
 
-    if ($targetIndex >= count($targets)) {
+    echo "$sentCount emails sent from $email\n";
+
+    if (empty($targets)) {
         echo "All targets processed.\n";
         break;
     }
 }
+
+echo "Total emails sent: $totalSent\n";
