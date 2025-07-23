@@ -91,7 +91,7 @@ foreach ($accounts as $accountIndex => $account) {
             $mail->Body = 'This is a test email used to validate delivery to your address.';
 
             $mail->send();
-            echo "Sent to: $recipient\n";
+            // echo "Sent to: $recipient\n";
 
             // Remove sent email from allTargets and update file
             $key = array_search($recipient, $allTargets);
