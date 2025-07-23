@@ -1,32 +1,40 @@
 <?php
-$emailsFile = 'emails.txt';
-$lastSentFile = 'lastgmail.txt';
+// Define files
+$emailFile = 'emails.txt';
+$lastFile = 'lastgmail.txt';
 
-if (!file_exists($emailsFile)) {
+// Check file existence
+if (!file_exists($emailFile)) {
     die("emails.txt not found.\n");
 }
-if (!file_exists($lastSentFile)) {
+
+if (!file_exists($lastFile)) {
     die("lastgmail.txt not found.\n");
 }
 
-$lastSent = trim(file_get_contents($lastSentFile));
-if (!$lastSent || !filter_var($lastSent, FILTER_VALIDATE_EMAIL)) {
-    die("Invalid email in lastgmail.txt.\n");
+// Read and sanitize
+$emails = file($emailFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+$emails = array_map(fn($line) => trim(mb_convert_encoding($line, 'UTF-8')), $emails);
+
+$lastGmail = trim(mb_convert_encoding(file_get_contents($lastFile), 'UTF-8'));
+
+if (empty($lastGmail)) {
+    die("lastgmail.txt is empty.\n");
 }
 
-$lines = file($emailsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-if (!$lines || count($lines) === 0) {
-    die("emails.txt is empty.\n");
+// Find the position of the last Gmail
+$foundIndex = array_search($lastGmail, $emails);
+
+if ($foundIndex === false) {
+    echo "Email '$lastGmail' not found in emails.txt. No changes made.\n";
+    exit;
 }
 
-// Find the index of the last sent email
-$cutIndex = array_search($lastSent, $lines);
-if ($cutIndex === false) {
-    die("Email '$lastSent' not found in emails.txt. No changes made.\n");
-}
+// Slice from next position
+$remainingEmails = array_slice($emails, $foundIndex + 1);
 
-// Remove everything up to and including the last sent email
-$remaining = array_slice($lines, $cutIndex + 1);
-file_put_contents($emailsFile, implode("\n", $remaining));
+// Write back to emails.txt
+file_put_contents($emailFile, implode(PHP_EOL, $remainingEmails) . PHP_EOL);
 
-echo "Trimmed emails.txt up to and including $lastSent. Remaining emails: " . count($remaining) . "\n";
+echo "Trimmed emails.txt. Removed up to: $lastGmail (line " . ($foundIndex + 1) . ")\n";
+echo "Remaining emails: " . count($remainingEmails) . "\n";
