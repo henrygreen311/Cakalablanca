@@ -4,8 +4,7 @@ on:
   workflow_dispatch:   # Manual trigger
   schedule:
     - cron: '0 8 * * *'  # Daily at 08:00 UTC
-    - cron: '0 9 * * *'  # Daily at 09:00 UTC
-
+    
 jobs:
   validate-emails:
     runs-on: ubuntu-latest
