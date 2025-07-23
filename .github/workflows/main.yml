@@ -1,9 +1,10 @@
-name: Gmail Validator
+name: Gmail validator
 
 on:
+  workflow_dispatch:   # Manual trigger
   schedule:
-    - cron: '0 8 * * *'   # Run daily at 08:00 UTC
-    - cron: '0 9 * * *'   # Run daily at 09:00 UTC
+    - cron: '0 8 * * *'  # Daily at 08:00 UTC
+    - cron: '0 9 * * *'  # Daily at 09:00 UTC
 
 jobs:
   validate-emails:
@@ -17,7 +18,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y php php-cli php-curl php-mbstring php-imap php-xml php-zip unzip
-        sudo php -m | grep imap
+        php -m | grep -i imap
 
     - name: Run gmail.php
       run: php gmail.php
@@ -30,13 +31,8 @@ jobs:
 
     - name: Commit and push valid_emails.txt
       run: |
-        git config user.name "github-actions"
-        git config user.email "github-actions@github.com"
-        git add valid_emails.txt
-        git commit -m "Update valid_emails.txt [auto-run]"
-        git push
-      env:
-        GIT_AUTHOR_NAME: github-actions
-        GIT_AUTHOR_EMAIL: github-actions@github.com
-        GIT_COMMITTER_NAME: github-actions
-        GIT_COMMITTER_EMAIL: github-actions@github.com
+        git config --global user.name "github-actions"
+        git config --global user.email "github-actions@github.com"
+        git add valid_emails.txt || true
+        git commit -m "Update valid_emails.txt [automated run]" || echo "No changes to commit"
+        git push || echo "No changes pushed"
