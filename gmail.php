@@ -91,7 +91,7 @@ foreach ($accounts as $accountIndex => $account) {
             $mail->Body = 'This is a test email used to validate delivery to your address.';    
     
             $mail->send();    
-            echo "Sent to: $recipient\n";    
+            //hecho "Sent to: $recipient\n";    
     
             // Save last successful recipient
             file_put_contents('lastgmail.txt', $recipient);
