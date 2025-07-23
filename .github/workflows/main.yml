@@ -14,11 +14,10 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up PHP with IMAP and required extensions
+    - name: Install PHP
       run: |
         sudo apt-get update
-        sudo apt-get install -y php php-cli php-curl php-mbstring php-imap php-xml php-zip unzip
-        php -m | grep -i imap
+        sudo apt-get install -y php php-imap
 
     - name: Run gmail.php
       run: php gmail.php
