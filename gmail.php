@@ -20,7 +20,7 @@ if (!$allTargets || count($allTargets) === 0) {
     die("emails.txt is empty.\n");
 }
 
-$maxPerAccount = 105;
+$maxPerAccount = 1;
 $maxQuotaFailures = 3;
 $totalSent = 0;
 
