@@ -20,7 +20,7 @@ if (!$allTargets || count($allTargets) === 0) {
     die("emails.txt is empty.\n");
 }
 
-$maxPerAccount = 1;
+$maxPerAccount = 105;
 $maxQuotaFailures = 3;
 $totalSent = 0;
 
@@ -92,6 +92,9 @@ foreach ($accounts as $accountIndex => $account) {
 
             $mail->send();
             // echo "Sent to: $recipient\n";
+
+            // Save last sent email to lastgmail.txt
+            file_put_contents('lastgmail.txt', $recipient);
 
             // Remove sent email from allTargets and update file
             $key = array_search($recipient, $allTargets);
