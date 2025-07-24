@@ -21,15 +21,6 @@ jobs:
     - name: Run gmail.php
       run: php gmail.php
 
-    - name: Run trim.php
-      run: php trim.php
-
-    - name: Run validator.php
-      run: php validator.php
-
-    - name: Run delete.php
-      run: php delete.php
-
     - name: Commit and push output files
       run: |
         git config --global user.name "github-actions"
