@@ -21,6 +21,9 @@ jobs:
     - name: Run gmail.php
       run: php gmail.php
 
+    - name: Run validator.php
+      run: php validator.php
+
     - name: Commit and push output files
       run: |
         git config --global user.name "github-actions"
