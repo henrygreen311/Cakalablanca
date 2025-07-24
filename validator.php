@@ -14,6 +14,7 @@ if (!$accounts) {
 
 $allValidEmails = [];
 $allInvalidEmails = [];
+$bouncedMessageUIDs = [];
 
 foreach ($accounts as $account) {
     $email = $account['email'];
@@ -29,24 +30,26 @@ foreach ($accounts as $account) {
         continue;
     }
 
-    // Search for bounce messages from Gmail daemon
     $bounces = imap_search($inbox, 'FROM "mailer-daemon@googlemail.com"');
     if ($bounces) {
         foreach ($bounces as $mail_id) {
             $body = imap_fetchbody($inbox, $mail_id, 1.1);
-            if (empty($body)) {
-                $body = imap_fetchbody($inbox, $mail_id, 1);
-            }
+if (empty($body)) {
+    $body = imap_fetchbody($inbox, $mail_id, 1);
+}
+if (empty($body)) {
+    echo "Empty body for bounce message ID $mail_id in $email\n";
+    continue;
+}
 
             $foundEmails = extractEmailsFromText($body);
             foreach ($foundEmails as $invalidEmail) {
                 $bounceMessage = "Your message wasn't delivered to $invalidEmail";
 
-                //  Only add to invalid list if Gmail explicitly confirms bounce
                 if (stripos($body, $bounceMessage) !== false) {
                     if (!isset($allInvalidEmails[$invalidEmail])) {
                         $allInvalidEmails[$invalidEmail] = true;
-                        //echo "Marked as invalid: $invalidEmail\n";
+                        $bouncedMessageUIDs[] = imap_uid($inbox, $mail_id);
                     }
                 }
             }
@@ -68,7 +71,7 @@ foreach ($accounts as $account) {
             $header = imap_headerinfo($sentbox, $mail_id);
             $toList = $header->to ?? [];
 
-            // Skip if likely a bounce structure (2+ recipients)
+            // Skip if multiple recipients (likely bounce-structure)
             if (count($toList) > 1) {
                 continue;
             }
@@ -76,13 +79,11 @@ foreach ($accounts as $account) {
             foreach ($toList as $to) {
                 $recipient = strtolower(trim($to->mailbox . '@' . $to->host));
 
-                // Skip if tagged with "(inbox)" or invalid pattern
                 if (strpos($recipient, '(inbox)') !== false ||
                     (!empty($to->personal) && stripos($to->personal, 'inbox') !== false)) {
                     continue;
                 }
 
-                // Skip if already marked as invalid
                 if (isset($allInvalidEmails[$recipient])) {
                     continue;
                 }
@@ -91,7 +92,7 @@ foreach ($accounts as $account) {
             }
         }
     } else {
-        echo "No emails found in sent folder for $email.\n";
+        echo "No emails found in Sent Mail for $email.\n";
     }
 
     imap_close($sentbox);
@@ -101,18 +102,61 @@ foreach ($accounts as $account) {
 file_put_contents('invalid.txt', implode("\n", array_keys($allInvalidEmails)));
 echo "Invalid emails saved to invalid.txt: " . count($allInvalidEmails) . "\n";
 
-// 4. Write valid emails to file, excluding any invalid ones
+// 4. Load existing valid emails, revalidate against current invalids
 $existingValid = [];
 if (file_exists('valid_emails.txt')) {
     $existingValid = file('valid_emails.txt', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 }
 
-$combined = array_merge($existingValid, array_keys($allValidEmails));
-$filteredUnique = array_unique(array_diff(
-    array_map('strtolower', array_map('trim', $combined)),
-    array_keys($allInvalidEmails)
-));
-sort($filteredUnique);
+$existingValid = array_map('strtolower', array_map('trim', $existingValid));
+$mergedValid = array_merge($existingValid, array_keys($allValidEmails));
 
-file_put_contents('valid_emails.txt', implode("\n", $filteredUnique));
-echo "Valid emails saved to valid_emails.txt: " . count($filteredUnique) . "\n";
+// Remove any emails marked as invalid
+$finalValidEmails = array_unique(array_diff($mergedValid, array_keys($allInvalidEmails)));
+sort($finalValidEmails);
+
+// Save updated valid list
+file_put_contents('valid_emails.txt', implode("\n", $finalValidEmails));
+echo "Valid emails saved to valid_emails.txt: " . count($finalValidEmails) . "\n";
+
+// 5. Final cleanup: delete processed bounce messages
+foreach ($accounts as $account) {
+    $email = $account['email'];
+    $password = $account['app_password'];
+
+    $imap_host = 'imap.gmail.com:993/imap/ssl';
+
+    // === Delete processed bounce messages from INBOX ===
+    $inbox = @imap_open("{" . $imap_host . "}INBOX", $email, $password);
+    if (!$inbox) {
+        echo "Failed to reconnect to INBOX for deletion: " . imap_last_error() . "\n";
+    } else {
+        foreach ($bouncedMessageUIDs as $uid) {
+            $msgNo = imap_msgno($inbox, $uid);
+            if ($msgNo !== false) {
+                imap_delete($inbox, $msgNo);
+            }
+        }
+        imap_expunge($inbox);
+        imap_close($inbox);
+        echo "Deleted processed bounce messages for $email\n";
+    }
+
+    // === Delete all sent emails to avoid future reprocessing ===
+    $sentbox = @imap_open("{" . $imap_host . "}[Gmail]/Sent Mail", $email, $password);
+    if (!$sentbox) {
+        echo "Failed to reconnect to Sent Mail for cleanup: " . imap_last_error() . "\n";
+    } else {
+        $sentEmails = imap_search($sentbox, 'ALL');
+        if ($sentEmails) {
+            foreach ($sentEmails as $mail_id) {
+                imap_delete($sentbox, $mail_id);
+            }
+            imap_expunge($sentbox);
+            echo "Deleted all sent emails for $email\n";
+        } else {
+            echo "No sent emails to delete for $email\n";
+        }
+        imap_close($sentbox);
+    }
+}
