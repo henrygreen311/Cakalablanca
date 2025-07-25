@@ -14,7 +14,7 @@ if (!$accounts) {
 
 $allValidEmails = [];
 $allInvalidEmails = [];
-$bouncedMessageUIDs = [];
+$bouncedUIDsPerAccount = []; // New structure
 
 foreach ($accounts as $account) {
     $email = $account['email'];
@@ -49,7 +49,10 @@ if (empty($body)) {
                 if (stripos($body, $bounceMessage) !== false) {
                     if (!isset($allInvalidEmails[$invalidEmail])) {
                         $allInvalidEmails[$invalidEmail] = true;
-                        $bouncedMessageUIDs[] = imap_uid($inbox, $mail_id);
+                        if (!isset($bouncedUIDsPerAccount[$email])) {
+    $bouncedUIDsPerAccount[$email] = [];
+}
+$bouncedUIDsPerAccount[$email][] = imap_uid($inbox, $mail_id);
                     }
                 }
             }
@@ -119,7 +122,7 @@ sort($finalValidEmails);
 file_put_contents('valid_emails.txt', implode("\n", $finalValidEmails));
 echo "Valid emails saved to valid_emails.txt: " . count($finalValidEmails) . "\n";
 
-// 5. Final cleanup: delete processed bounce messages
+// 5. Final cleanup: delete processed bounce and sent messages per account
 foreach ($accounts as $account) {
     $email = $account['email'];
     $password = $account['app_password'];
@@ -131,14 +134,16 @@ foreach ($accounts as $account) {
     if (!$inbox) {
         echo "Failed to reconnect to INBOX for deletion: " . imap_last_error() . "\n";
     } else {
-        foreach ($bouncedMessageUIDs as $uid) {
-            $msgNo = imap_msgno($inbox, $uid);
-            if ($msgNo !== false) {
-                imap_delete($inbox, $msgNo);
-            }
-        }
+        foreach ($bouncedUIDsPerAccount[$email] ?? [] as $uid) {
+    $msgNo = @imap_msgno($inbox, $uid);
+    if ($msgNo !== false && $msgNo > 0) {
+        imap_delete($inbox, $msgNo);
+        usleep(200000); // Wait 200ms to prevent IMAP overload
+    }
+}
         imap_expunge($inbox);
         imap_close($inbox);
+        unset($inbox);
         echo "Deleted processed bounce messages for $email\n";
     }
 
@@ -151,6 +156,7 @@ foreach ($accounts as $account) {
         if ($sentEmails) {
             foreach ($sentEmails as $mail_id) {
                 imap_delete($sentbox, $mail_id);
+                usleep(200000); // Pause between deletes
             }
             imap_expunge($sentbox);
             echo "Deleted all sent emails for $email\n";
@@ -158,5 +164,6 @@ foreach ($accounts as $account) {
             echo "No sent emails to delete for $email\n";
         }
         imap_close($sentbox);
+        unset($sentbox);
     }
 }
